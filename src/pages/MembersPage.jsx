@@ -30,6 +30,15 @@ function getEndDate(startDate, plan) {
   return d;
 }
 
+function displayDate(isoStr) {
+  if (!isoStr) return "";
+  const parts = isoStr.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return isoStr;
+}
+
 /**
  * Computes membership status.
  * Uses endDate field if available (set during renewal), otherwise calculates from startDate + plan.
@@ -237,14 +246,32 @@ function AddMemberModal({ onClose, onSaved, adminGymId }) {
           {/* Start Date */}
           <div className="form-group">
             <label htmlFor="member-startdate">Start Date</label>
-            <input
-              id="member-startdate"
-              type="date"
-              value={form.startDate}
-              onChange={set("startDate")}
-              max={new Date().toISOString().split("T")[0]}
-              style={{ colorScheme: "light" }}
-            />
+            <div className="date-input-container" style={{ position: "relative" }}>
+              <input
+                type="text"
+                readOnly
+                value={displayDate(form.startDate)}
+                placeholder="dd/mm/yyyy"
+                style={{ width: "100%" }}
+              />
+              <input
+                id="member-startdate"
+                type="date"
+                value={form.startDate}
+                onChange={set("startDate")}
+                max={new Date().toISOString().split("T")[0]}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  height: "100%",
+                  opacity: 0,
+                  cursor: "pointer",
+                  colorScheme: "light"
+                }}
+              />
+            </div>
           </div>
 
           {/* End Date preview */}
@@ -492,6 +519,26 @@ function EditMemberModal({ member, onClose, onSaved }) {
   const [endDate, setEndDate] = useState(member.endDate || "");
   const [saving, setSaving] = useState(false);
 
+  const handleStartDateChange = (val) => {
+    setStartDate(val);
+    if (val && plan) {
+      const calculated = getEndDate(val, plan);
+      if (calculated) {
+        setEndDate(calculated.toISOString().split("T")[0]);
+      }
+    }
+  };
+
+  const handlePlanChange = (val) => {
+    setPlan(val);
+    if (startDate && val) {
+      const calculated = getEndDate(startDate, val);
+      if (calculated) {
+        setEndDate(calculated.toISOString().split("T")[0]);
+      }
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) return alert("Name is required");
@@ -573,7 +620,7 @@ function EditMemberModal({ member, onClose, onSaved }) {
 
           <div className="form-group">
             <label htmlFor="edit-plan">Select Plan</label>
-            <select className="form-select" id="edit-plan" value={plan} onChange={(e) => setPlan(e.target.value)}>
+            <select className="form-select" id="edit-plan" value={plan} onChange={(e) => handlePlanChange(e.target.value)}>
               <option value="1 Month">1 Month — 30 days</option>
               <option value="3 Months">3 Months — 90 days</option>
               <option value="1 Year">1 Year — 365 days</option>
@@ -582,22 +629,60 @@ function EditMemberModal({ member, onClose, onSaved }) {
 
           <div className="form-group">
             <label htmlFor="edit-start-date">Start Date</label>
-            <input
-              id="edit-start-date"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
+            <div className="date-input-container" style={{ position: "relative" }}>
+              <input
+                type="text"
+                readOnly
+                value={displayDate(startDate)}
+                placeholder="dd/mm/yyyy"
+                style={{ width: "100%" }}
+              />
+              <input
+                id="edit-start-date"
+                type="date"
+                value={startDate}
+                onChange={(e) => handleStartDateChange(e.target.value)}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  height: "100%",
+                  opacity: 0,
+                  cursor: "pointer",
+                  colorScheme: "light"
+                }}
+              />
+            </div>
           </div>
 
           <div className="form-group">
             <label htmlFor="edit-end-date">End Date</label>
-            <input
-              id="edit-end-date"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
+            <div className="date-input-container" style={{ position: "relative" }}>
+              <input
+                type="text"
+                readOnly
+                value={displayDate(endDate)}
+                placeholder="dd/mm/yyyy"
+                style={{ width: "100%" }}
+              />
+              <input
+                id="edit-end-date"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  height: "100%",
+                  opacity: 0,
+                  cursor: "pointer",
+                  colorScheme: "light"
+                }}
+              />
+            </div>
           </div>
 
           <div className="modal-actions" style={{ marginTop: "20px" }}>

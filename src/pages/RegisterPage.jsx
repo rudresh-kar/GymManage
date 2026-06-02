@@ -13,6 +13,15 @@ function getEndDate(startDate, plan) {
   return d.toISOString().split("T")[0];
 }
 
+function displayDate(isoStr) {
+  if (!isoStr) return "";
+  const parts = isoStr.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return isoStr;
+}
+
 export default function RegisterPage() {
   const navigate = useNavigate();
 
@@ -258,15 +267,33 @@ export default function RegisterPage() {
               {/* Start Date */}
               <div className="form-group">
                 <label htmlFor="reg-startDate">Start Date</label>
-                <input
-                  id="reg-startDate"
-                  type="date"
-                  name="startDate"
-                  value={form.startDate}
-                  onChange={handleChange}
-                  required
-                  style={{ colorScheme: "light" }}
-                />
+                <div className="date-input-container" style={{ position: "relative" }}>
+                  <input
+                    type="text"
+                    readOnly
+                    value={displayDate(form.startDate)}
+                    placeholder="dd/mm/yyyy"
+                    style={{ width: "100%" }}
+                  />
+                  <input
+                    id="reg-startDate"
+                    type="date"
+                    name="startDate"
+                    value={form.startDate}
+                    onChange={handleChange}
+                    required
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      height: "100%",
+                      opacity: 0,
+                      cursor: "pointer",
+                      colorScheme: "light"
+                    }}
+                  />
+                </div>
               </div>
             </>
           )}

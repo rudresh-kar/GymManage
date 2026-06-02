@@ -14,6 +14,15 @@ function fmt(dateStr) {
   });
 }
 
+function displayDate(isoStr) {
+  if (!isoStr) return "";
+  const parts = isoStr.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return isoStr;
+}
+
 export default function PaymentsPage() {
   const { gymId: currentAdminGymId, userProfile } = useAuth();
   const [payments, setPayments] = useState([]);
@@ -973,33 +982,71 @@ function DownloadModal({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label htmlFor="custom-start-date">Start Date</label>
-              <input
-                id="custom-start-date"
-                type="date"
-                disabled={preset !== "custom"}
-                value={preset === "custom" ? customStart : formatDateValue(start)}
-                onChange={(e) => setCustomStart(e.target.value)}
-                style={{
-                  opacity: preset === "custom" ? 1 : 0.6,
-                  cursor: preset === "custom" ? "text" : "not-allowed",
-                  width: "100%"
-                }}
-              />
+              <div className="date-input-container" style={{ position: "relative" }}>
+                <input
+                  type="text"
+                  readOnly
+                  disabled={preset !== "custom"}
+                  value={displayDate(preset === "custom" ? customStart : formatDateValue(start))}
+                  placeholder="dd/mm/yyyy"
+                  style={{
+                    width: "100%",
+                    opacity: preset === "custom" ? 1 : 0.6,
+                    cursor: preset === "custom" ? "pointer" : "not-allowed"
+                  }}
+                />
+                <input
+                  id="custom-start-date"
+                  type="date"
+                  disabled={preset !== "custom"}
+                  value={preset === "custom" ? customStart : formatDateValue(start)}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: "100%",
+                    opacity: 0,
+                    cursor: preset === "custom" ? "pointer" : "not-allowed",
+                    colorScheme: "light"
+                  }}
+                />
+              </div>
             </div>
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label htmlFor="custom-end-date">End Date</label>
-              <input
-                id="custom-end-date"
-                type="date"
-                disabled={preset !== "custom"}
-                value={preset === "custom" ? customEnd : formatDateValue(end)}
-                onChange={(e) => setCustomEnd(e.target.value)}
-                style={{
-                  opacity: preset === "custom" ? 1 : 0.6,
-                  cursor: preset === "custom" ? "text" : "not-allowed",
-                  width: "100%"
-                }}
-              />
+              <div className="date-input-container" style={{ position: "relative" }}>
+                <input
+                  type="text"
+                  readOnly
+                  disabled={preset !== "custom"}
+                  value={displayDate(preset === "custom" ? customEnd : formatDateValue(end))}
+                  placeholder="dd/mm/yyyy"
+                  style={{
+                    width: "100%",
+                    opacity: preset === "custom" ? 1 : 0.6,
+                    cursor: preset === "custom" ? "pointer" : "not-allowed"
+                  }}
+                />
+                <input
+                  id="custom-end-date"
+                  type="date"
+                  disabled={preset !== "custom"}
+                  value={preset === "custom" ? customEnd : formatDateValue(end)}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: "100%",
+                    opacity: 0,
+                    cursor: preset === "custom" ? "pointer" : "not-allowed",
+                    colorScheme: "light"
+                  }}
+                />
+              </div>
             </div>
           </div>
 
