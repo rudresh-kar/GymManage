@@ -70,12 +70,20 @@ function AddMemberModal({ onClose, onSaved, adminGymId }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
+  const set = (k) => (e) => {
+    let val = e.target.value;
+    if (k === "contact") {
+      val = val.replace(/[^0-9]/g, "").slice(0, 10);
+    }
+    setForm((p) => ({ ...p, [k]: val }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return setError("Name is required.");
     if (!form.contact.trim()) return setError("Contact number is required.");
+    const cleanPhone = form.contact.replace(/[^0-9]/g, "");
+    if (cleanPhone.length !== 10) return setError("Contact number must be exactly 10 digits.");
 
     if (form.email.trim()) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -87,7 +95,6 @@ function AddMemberModal({ onClose, onSaved, adminGymId }) {
     setSaving(true);
     setError("");
     try {
-      const cleanPhone = form.contact.trim().replace(/\+/g, "").replace(/[^0-9]/g, "");
       const registrationEmail = form.email.trim() || `${cleanPhone}@flexpro.in`;
 
       // 1. Create Firebase Auth account for member (secondary app — admin stays signed in)
@@ -96,7 +103,7 @@ function AddMemberModal({ onClose, onSaved, adminGymId }) {
       // 2. Create the member document in Firestore
       const memberId = await addMember({
         name: form.name.trim(),
-        contact: form.contact.trim(),
+        contact: cleanPhone,
         email: form.email.trim() || "",
         plan: form.plan,
         startDate: form.startDate,
@@ -112,7 +119,7 @@ function AddMemberModal({ onClose, onSaved, adminGymId }) {
         memberId,
         name: form.name.trim(),
         email: form.email.trim() || "",
-        contact: form.contact.trim(),
+        contact: cleanPhone,
         password: form.password // Saved for phone-based password reset
       });
 
@@ -488,12 +495,14 @@ function EditMemberModal({ member, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) return alert("Name is required");
+    const cleanPhone = contact.replace(/[^0-9]/g, "");
+    if (cleanPhone.length !== 10) return alert("Contact number must be exactly 10 digits");
     
     setSaving(true);
     try {
       await updateMember(member.id, {
         name: name.trim(),
-        contact: contact.trim(),
+        contact: cleanPhone,
         email: email.trim(),
         plan,
         startDate,
@@ -503,7 +512,7 @@ function EditMemberModal({ member, onClose, onSaved }) {
       if (member.uid) {
         await updateDocument("users", member.uid, {
           name: name.trim(),
-          contact: contact.trim(),
+          contact: cleanPhone,
           email: email.trim()
         });
       }
@@ -548,7 +557,7 @@ function EditMemberModal({ member, onClose, onSaved }) {
               id="edit-contact"
               type="tel"
               value={contact}
-              onChange={(e) => setContact(e.target.value)}
+              onChange={(e) => setContact(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))}
             />
           </div>
 

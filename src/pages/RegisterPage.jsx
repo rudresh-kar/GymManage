@@ -48,8 +48,13 @@ export default function RegisterPage() {
       .catch((err) => console.error("Error fetching gyms:", err));
   }, []);
 
-  const handleChange = (e) =>
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    let value = e.target.value;
+    if (e.target.name === "contact") {
+      value = value.replace(/[^0-9]/g, "").slice(0, 10);
+    }
+    setForm((prev) => ({ ...prev, [e.target.name]: value }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -57,6 +62,8 @@ export default function RegisterPage() {
 
     if (!form.name.trim()) return setError("Full name is required.");
     if (!form.contact.trim()) return setError("Contact number is required.");
+    const cleanPhone = form.contact.replace(/[^0-9]/g, "");
+    if (cleanPhone.length !== 10) return setError("Contact number must be exactly 10 digits.");
     if (form.password.length < 6) return setError("Password must be at least 6 characters.");
     if (form.password !== form.confirm) return setError("Passwords do not match.");
 
@@ -70,7 +77,7 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      const cleanPhone = form.contact.trim().replace(/\+/g, "").replace(/[^0-9]/g, "");
+      const cleanPhone = form.contact.replace(/[^0-9]/g, "");
       const registrationEmail = form.email.trim() || `${cleanPhone}@flexpro.in`;
 
       const fbUser = await registerUser(registrationEmail, form.password, form.name.trim());
@@ -82,7 +89,7 @@ export default function RegisterPage() {
           gymId: fbUser.uid,
           name: form.name.trim(),
           email: registrationEmail,
-          contact: form.contact.trim(),
+          contact: cleanPhone,
           gymName: form.gymName.trim(),
           gymAddress: form.gymAddress.trim(),
           password: form.password // Saved for phone-based password reset
@@ -109,7 +116,7 @@ export default function RegisterPage() {
           gymId: form.gymId,
           name: form.name.trim(),
           email: registrationEmail,
-          contact: form.contact.trim(),
+          contact: cleanPhone,
           password: form.password // Saved for phone-based password reset
         });
         navigate("/member-portal");
@@ -178,14 +185,13 @@ export default function RegisterPage() {
             />
           </div>
 
-          {/* Contact Number */}
           <div className="form-group">
             <label htmlFor="reg-contact">Contact Number</label>
             <input
               id="reg-contact"
               type="tel"
               name="contact"
-              placeholder="e.g. +91 987XXXXX10"
+              placeholder="e.g. 9876543210"
               value={form.contact}
               onChange={handleChange}
               required

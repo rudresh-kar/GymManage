@@ -7,6 +7,7 @@ import {
   updateProfile,
   updatePassword,
   updateEmail,
+  verifyBeforeUpdateEmail,
 } from "firebase/auth";
 import { auth, secondaryAuth } from "./config";
 
@@ -65,6 +66,40 @@ export const resetUserPassword = async (email, oldPassword, newPassword) => {
  */
 export const updateUserEmail = async (newEmail) => {
   if (auth.currentUser) {
-    await updateEmail(auth.currentUser, newEmail);
+    try {
+      await updateEmail(auth.currentUser, newEmail);
+      return { verified: true };
+    } catch (err) {
+      if (err.code === "auth/operation-not-allowed" || err.message?.includes("verify the new email")) {
+        if (newEmail.endsWith("@flexpro.in") || (auth.currentUser.email && auth.currentUser.email.endsWith("@flexpro.in"))) {
+          throw new Error("Email change verification is enabled in your Firebase project. To allow updating phone numbers/dummy emails, you must go to Firebase Console > Authentication > Settings > User actions, and disable 'Verify email before changing'.");
+        }
+        await verifyBeforeUpdateEmail(auth.currentUser, newEmail);
+        return { verified: false };
+      }
+      throw err;
+    }
   }
+  return { verified: false };
 };
+
+/**
+ * Updates the contact/phone number for the logged-in user.
+ * If they are currently using a dummy email (ending in @flexpro.in),
+ * it also updates their Firebase Auth email to [newPhone]@flexpro.in.
+ */
+export const updateUserPhone = async (newPhone) => {
+  if (!auth.currentUser) throw new Error("No user is currently logged in.");
+  
+  const cleanPhone = newPhone.replace(/[^0-9]/g, "");
+  if (cleanPhone.length !== 10) throw new Error("Phone number must be exactly 10 digits.");
+  
+  const currentEmail = auth.currentUser.email || "";
+  if (currentEmail.endsWith("@flexpro.in")) {
+    const newDummyEmail = `${cleanPhone}@flexpro.in`;
+    return await updateUserEmail(newDummyEmail);
+  }
+  return { verified: true };
+};
+
+

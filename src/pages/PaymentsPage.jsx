@@ -452,16 +452,19 @@ export default function PaymentsPage() {
           }
           .payments-selects {
             display: flex;
+            flex-wrap: wrap;
             gap: 8px;
             width: 100%;
           }
           @media (min-width: 768px) {
             .payments-selects {
               width: auto;
+              flex-wrap: nowrap;
             }
           }
           .payments-select {
             flex: 1;
+            min-width: 120px;
             padding: 8px 12px;
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
@@ -608,10 +611,13 @@ export default function PaymentsPage() {
                   borderRadius: "var(--radius-sm)",
                   display: "inline-flex",
                   alignItems: "center",
+                  justifyContent: "center",
                   gap: "6px",
                   whiteSpace: "nowrap",
                   marginTop: 0,
-                  height: "38px"
+                  height: "38px",
+                  flex: 1,
+                  minWidth: "120px"
                 }}
                 onClick={() => setShowDownloadModal(true)}
               >

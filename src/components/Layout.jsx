@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { logoutUser, updateUserEmail } from "../firebase/auth";
+import { logoutUser, updateUserEmail, updateUserPhone } from "../firebase/auth";
 import { updateDocument } from "../firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { BRAND_NAME } from "../constants";
@@ -77,6 +77,13 @@ export default function Layout({ children, title, subtitle }) {
   const [emailSuccess, setEmailSuccess] = useState("");
   const [updatingEmail, setUpdatingEmail] = useState(false);
 
+  // Contact update form states
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [newContact, setNewContact] = useState("");
+  const [contactError, setContactError] = useState("");
+  const [contactSuccess, setContactSuccess] = useState("");
+  const [updatingContact, setUpdatingContact] = useState(false);
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -95,6 +102,11 @@ export default function Layout({ children, title, subtitle }) {
       setEmailError("");
       setEmailSuccess("");
       setUpdatingEmail(false);
+      setIsEditingContact(false);
+      setNewContact("");
+      setContactError("");
+      setContactSuccess("");
+      setUpdatingContact(false);
     }
   }, [isProfileDropdownOpen]);
 
@@ -112,7 +124,7 @@ export default function Layout({ children, title, subtitle }) {
     setEmailSuccess("");
     try {
       // 1. Update in Firebase Auth
-      await updateUserEmail(newEmail.trim());
+      const res = await updateUserEmail(newEmail.trim());
 
       // 2. Update in Firestore users collection
       if (user?.uid) {
@@ -121,7 +133,11 @@ export default function Layout({ children, title, subtitle }) {
         });
       }
 
-      setEmailSuccess("Email updated successfully!");
+      if (res && res.verified === false) {
+        setEmailSuccess("Verification email sent! Please check your new email inbox to complete the update.");
+      } else {
+        setEmailSuccess("Email updated successfully!");
+      }
       setIsEditingEmail(false);
     } catch (err) {
       console.error("Failed to update owner email:", err);
@@ -136,6 +152,45 @@ export default function Layout({ children, title, subtitle }) {
       }
     } finally {
       setUpdatingEmail(false);
+    }
+  };
+
+  const handleUpdateContact = async (e) => {
+    e.preventDefault();
+    const cleanPhone = newContact.replace(/[^0-9]/g, "");
+    if (cleanPhone.length !== 10) return setContactError("Contact number must be exactly 10 digits.");
+    
+    setUpdatingContact(true);
+    setContactError("");
+    setContactSuccess("");
+    try {
+      // 1. Update in Firebase Auth if dummy email is used
+      let isVerifiedChange = true;
+      if (userProfile?.contact !== cleanPhone) {
+        const res = await updateUserPhone(cleanPhone);
+        if (res && res.verified === false) {
+          isVerifiedChange = false;
+        }
+      }
+
+      // 2. Update in Firestore users collection
+      if (user?.uid) {
+        await updateDocument("users", user.uid, {
+          contact: cleanPhone
+        });
+      }
+
+      if (!isVerifiedChange) {
+        setContactSuccess("Verification email sent! Please check your new dummy email inbox to complete the update.");
+      } else {
+        setContactSuccess("Contact updated successfully!");
+      }
+      setIsEditingContact(false);
+    } catch (err) {
+      console.error("Failed to update owner contact:", err);
+      setContactError(err.message || "Failed to update contact.");
+    } finally {
+      setUpdatingContact(false);
     }
   };
 
@@ -347,6 +402,84 @@ export default function Layout({ children, title, subtitle }) {
                     )}
                   </>
                 )}
+
+                {isEditingContact ? (
+                  <form onSubmit={handleUpdateContact} style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+                    <input
+                      type="tel"
+                      placeholder="Enter 10-digit number..."
+                      value={newContact}
+                      onChange={(e) => setNewContact(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))}
+                      required
+                      style={{
+                        padding: "6px 10px",
+                        fontSize: "0.8rem",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border, #e5e7eb)",
+                        background: "var(--bg-base, #f9fafb)",
+                        color: "var(--text-primary, #111827)",
+                        width: "100%"
+                      }}
+                    />
+                    {contactError && (
+                      <span style={{ fontSize: "0.7rem", color: "var(--rose, #ef4444)", fontWeight: "500" }}>{contactError}</span>
+                    )}
+                    <div style={{ display: "flex", gap: "6px", marginTop: "2px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingContact(false)}
+                        className="btn btn-ghost"
+                        style={{ padding: "4px 8px", fontSize: "0.75rem", borderRadius: "6px", flex: 1, borderColor: "var(--border)" }}
+                        disabled={updatingContact}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        style={{ padding: "4px 8px", fontSize: "0.75rem", borderRadius: "6px", flex: 1 }}
+                        disabled={updatingContact}
+                      >
+                        {updatingContact ? "Saving..." : "Save"}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewContact(userProfile?.contact || "");
+                        setIsEditingContact(true);
+                      }}
+                      className="btn btn-ghost"
+                      style={{
+                        padding: "6px 10px",
+                        fontSize: "0.75rem",
+                        borderRadius: "6px",
+                        width: "100%",
+                        textAlign: "center",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "4px",
+                        borderColor: "var(--border)",
+                        marginTop: "4px"
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                      </svg>
+                      Update Contact
+                    </button>
+                    {contactSuccess && (
+                      <span style={{ fontSize: "0.7rem", color: "var(--emerald, #10b981)", fontWeight: "500", textAlign: "center" }}>
+                        ✓ {contactSuccess}
+                      </span>
+                    )}
+                  </>
+                )}
+
                 <hr style={{ border: "none", borderTop: "1px solid var(--border, #e5e7eb)", margin: "4px 0" }} />
                 <button
                   onClick={handleLogout}

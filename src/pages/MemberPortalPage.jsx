@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "../contexts/AuthContext";
-import { logoutUser, updateUserEmail } from "../firebase/auth";
+import { logoutUser, updateUserEmail, updateUserPhone } from "../firebase/auth";
 import { BRAND_NAME } from "../constants";
 import {
   getMember,
@@ -876,17 +876,40 @@ function EditProfileModal({ member, onClose, onSaved }) {
     e.preventDefault();
     if (!name.trim()) return setError("Name is required");
     if (!contact.trim()) return setError("Contact number is required");
+    const cleanPhone = contact.replace(/[^0-9]/g, "");
+    if (cleanPhone.length !== 10) return setError("Contact number must be exactly 10 digits");
 
     const newEmail = email.trim();
     const oldEmail = member.email || "";
+    const oldPhone = member.contact || "";
 
     setSaving(true);
     setError("");
     try {
-      // 1. Sync email update with Firebase Auth if changed
+      let isVerifiedChange = true;
+
+      // 1. Sync phone / dummy email update with Firebase Auth if changed
+      if (cleanPhone !== oldPhone) {
+        try {
+          const authRes = await updateUserPhone(cleanPhone);
+          if (authRes && authRes.verified === false) {
+            isVerifiedChange = false;
+          }
+        } catch (authErr) {
+          console.error("Auth phone update failed:", authErr);
+          setError("Failed to update account login phone: " + (authErr.message || authErr));
+          setSaving(false);
+          return;
+        }
+      }
+
+      // 2. Sync email update with Firebase Auth if changed
       if (newEmail && newEmail.toLowerCase() !== oldEmail.toLowerCase()) {
         try {
-          await updateUserEmail(newEmail);
+          const res = await updateUserEmail(newEmail);
+          if (res && res.verified === false) {
+            isVerifiedChange = false;
+          }
         } catch (authErr) {
           console.error("Auth email update failed:", authErr);
           if (authErr.code === "auth/requires-recent-login") {
@@ -910,26 +933,30 @@ function EditProfileModal({ member, onClose, onSaved }) {
         }
       }
 
-      // 2. Update Firestore members collection
+      // 3. Update Firestore members collection
       await updateMember(member.id, {
         name: name.trim(),
-        contact: contact.trim(),
+        contact: cleanPhone,
         email: newEmail
       });
 
-      // 3. Update Firestore users collection profile
+      // 4. Update Firestore users collection profile
       if (member.uid) {
         await updateDocument("users", member.uid, {
           name: name.trim(),
-          contact: contact.trim(),
+          contact: cleanPhone,
           email: newEmail
         });
       }
       
+      if (!isVerifiedChange) {
+        alert("A verification link was sent. Please verify it to complete your login email update.");
+      }
+
       onSaved({
         ...member,
         name: name.trim(),
-        contact: contact.trim(),
+        contact: cleanPhone,
         email: newEmail
       });
       onClose();
@@ -978,7 +1005,7 @@ function EditProfileModal({ member, onClose, onSaved }) {
               type="tel"
               required
               value={contact}
-              onChange={(e) => setContact(e.target.value)}
+              onChange={(e) => setContact(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))}
             />
           </div>
 

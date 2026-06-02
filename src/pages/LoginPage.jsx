@@ -37,7 +37,18 @@ export default function LoginPage() {
       let loginEmail = input;
       if (phoneRegex.test(input)) {
         const cleanPhone = input.replace(/\+/g, "").replace(/[^0-9]/g, "");
-        loginEmail = `${cleanPhone}@flexpro.in`;
+        if (cleanPhone.length !== 10) {
+          setError("Phone number must be exactly 10 digits.");
+          setLoading(false);
+          return;
+        }
+        // Look up the user profile by contact number to get their registered login email
+        const userProfile = await findUserByContact(cleanPhone);
+        if (userProfile && userProfile.email) {
+          loginEmail = userProfile.email;
+        } else {
+          loginEmail = `${cleanPhone}@flexpro.in`;
+        }
       }
 
       const fbUser = await loginUser(loginEmail, form.password);
@@ -54,7 +65,11 @@ export default function LoginPage() {
         navigate("/dashboard", { replace: true });
       }
     } catch (err) {
-      setError(err.message.replace("Firebase: ", "").replace(/\(.*\)\.?/, "").trim());
+      if (err.code === "auth/invalid-credential" || err.code === "auth/user-not-found" || err.code === "auth/wrong-password") {
+        setError("Invalid contact number/email or password. Please try again.");
+      } else {
+        setError(err.message.replace("Firebase: ", "").trim());
+      }
     } finally {
       setLoading(false);
     }
@@ -63,9 +78,14 @@ export default function LoginPage() {
   const handleFindUser = async (e) => {
     e.preventDefault();
     setForgotError("");
+    const cleanPhone = forgotForm.contact.replace(/[^0-9]/g, "");
+    if (cleanPhone.length !== 10) {
+      setForgotError("Contact number must be exactly 10 digits.");
+      return;
+    }
     setForgotLoading(true);
     try {
-      const user = await findUserByContact(forgotForm.contact);
+      const user = await findUserByContact(cleanPhone);
       if (!user) {
         throw new Error("This contact number is not registered.");
       }
@@ -139,15 +159,15 @@ export default function LoginPage() {
         <div className="auth-logo">
           <span className="logo-icon" style={{ display: "inline-flex", alignItems: "center", marginBottom: "8px" }}>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m6.5 6.5 11 11"/>
-              <path d="m21 21-1-1"/>
-              <path d="m3 3 1 1"/>
-              <path d="m18 22 4-4"/>
-              <path d="m2 6 4-4"/>
-              <path d="m3 10 7-7"/>
-              <path d="m14 21 7-7"/>
-              <path d="M6.5 12.5 12.5 6.5"/>
-              <path d="m11.5 17.5 6-6"/>
+              <path d="m6.5 6.5 11 11" />
+              <path d="m21 21-1-1" />
+              <path d="m3 3 1 1" />
+              <path d="m18 22 4-4" />
+              <path d="m2 6 4-4" />
+              <path d="m3 10 7-7" />
+              <path d="m14 21 7-7" />
+              <path d="M6.5 12.5 12.5 6.5" />
+              <path d="m11.5 17.5 6-6" />
             </svg>
           </span>
           <h1 className="logo-text">FlexPro</h1>
@@ -287,10 +307,10 @@ export default function LoginPage() {
                   <input
                     id="forgot-contact"
                     type="tel"
-                    placeholder="e.g. +91 98765 43210"
+                    placeholder="e.g. 98XXXXX210"
                     value={forgotForm.contact}
                     onChange={(e) =>
-                      setForgotForm((p) => ({ ...p, contact: e.target.value }))
+                      setForgotForm((p) => ({ ...p, contact: e.target.value.replace(/[^0-9]/g, "").slice(0, 10) }))
                     }
                     required
                     autoFocus
