@@ -6,6 +6,7 @@ import {
   onAuthStateChanged,
   updateProfile,
   updatePassword,
+  updateEmail,
 } from "firebase/auth";
 import { auth, secondaryAuth } from "./config";
 
@@ -57,4 +58,13 @@ export const resetUserPassword = async (email, oldPassword, newPassword) => {
   const credential = await signInWithEmailAndPassword(auth, email, oldPassword);
   await updatePassword(credential.user, newPassword);
   await signOut(auth);
+};
+
+/**
+ * Updates the current logged-in user's email in Firebase Auth
+ */
+export const updateUserEmail = async (newEmail) => {
+  if (auth.currentUser) {
+    await updateEmail(auth.currentUser, newEmail);
+  }
 };

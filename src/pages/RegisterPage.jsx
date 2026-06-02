@@ -56,9 +56,6 @@ export default function RegisterPage() {
 
     if (!form.name.trim()) return setError("Full name is required.");
     if (!form.contact.trim()) return setError("Contact number is required.");
-    if (registerType === "gymowner" && !form.email.trim()) {
-      return setError("Email address is required for Gym Owners.");
-    }
     if (form.password.length < 6) return setError("Password must be at least 6 characters.");
     if (form.password !== form.confirm) return setError("Passwords do not match.");
 
@@ -73,9 +70,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const cleanPhone = form.contact.trim().replace(/\+/g, "").replace(/[^0-9]/g, "");
-      const registrationEmail = registerType === "gymowner"
-        ? form.email.trim()
-        : (form.email.trim() || `${cleanPhone}@flexpro.in`);
+      const registrationEmail = form.email.trim() || `${cleanPhone}@flexpro.in`;
 
       const fbUser = await registerUser(registrationEmail, form.password, form.name.trim());
 
@@ -85,7 +80,7 @@ export default function RegisterPage() {
           role: "gymowner",
           gymId: fbUser.uid,
           name: form.name.trim(),
-          email: form.email.trim(),
+          email: registrationEmail,
           contact: form.contact.trim(),
           gymName: form.gymName.trim(),
           gymAddress: form.gymAddress.trim(),
@@ -97,7 +92,7 @@ export default function RegisterPage() {
         const memberId = await addMember({
           name: form.name.trim(),
           contact: form.contact.trim(),
-          email: form.email.trim() || "",
+          email: registrationEmail,
           plan: form.plan,
           startDate: form.startDate,
           endDate: getEndDate(form.startDate, form.plan),
@@ -112,7 +107,7 @@ export default function RegisterPage() {
           memberId,
           gymId: form.gymId,
           name: form.name.trim(),
-          email: form.email.trim() || "",
+          email: registrationEmail,
           contact: form.contact.trim(),
           password: form.password // Saved for phone-based password reset
         });
@@ -198,15 +193,14 @@ export default function RegisterPage() {
 
           {/* Email */}
           <div className="form-group">
-            <label htmlFor="reg-email">Email address {registerType === "member" && "(Optional)"}</label>
+            <label htmlFor="reg-email">Email address (Optional)</label>
             <input
               id="reg-email"
               type="email"
               name="email"
-              placeholder={registerType === "member" ? "Optional: you@gmail.com" : "you@gmail.com"}
+              placeholder="Optional: you@gmail.com"
               value={form.email}
               onChange={handleChange}
-              required={registerType === "gymowner"}
             />
           </div>
 

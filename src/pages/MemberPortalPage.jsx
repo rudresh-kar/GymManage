@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "../contexts/AuthContext";
-import { logoutUser } from "../firebase/auth";
+import { logoutUser, updateUserEmail } from "../firebase/auth";
 import {
   getMember,
   subscribeToMemberAttendance,
@@ -10,7 +11,6 @@ import {
   getUserProfile,
   getLocalDateKey,
   getPaymentsForMemberPaginated,
-  getAttendanceForMemberPaginated,
   updateMember,
   updateDocument,
 } from "../firebase/firestore";
@@ -293,8 +293,7 @@ function PaymentSummaryCard({ memberId }) {
 
 // ─── Profile Section ──────────────────────────────────────────────────────────
 
-function ProfileSection({ member, onUpdate }) {
-  const [showEditModal, setShowEditModal] = useState(false);
+function ProfileSection({ member, onUpdate, onEditProfile }) {
   if (!member) return <div className="portal-loading"><div className="spinner" /></div>;
 
   const status = getMemberStatus(member.startDate, member.plan, member.endDate);
@@ -658,7 +657,7 @@ function ProfileSection({ member, onUpdate }) {
             border: "1px solid var(--border)",
             cursor: "pointer",
           }}
-          onClick={() => setShowEditModal(true)}
+          onClick={onEditProfile}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Edit Profile
@@ -860,13 +859,6 @@ function ProfileSection({ member, onUpdate }) {
           </div>
         </div>
       )}
-      {showEditModal && (
-        <EditProfileModal
-          member={member}
-          onClose={() => setShowEditModal(false)}
-          onSaved={onUpdate}
-        />
-      )}
     </div>
   );
 }
@@ -884,27 +876,60 @@ function EditProfileModal({ member, onClose, onSaved }) {
     if (!name.trim()) return setError("Name is required");
     if (!contact.trim()) return setError("Contact number is required");
 
+    const newEmail = email.trim();
+    const oldEmail = member.email || "";
+
     setSaving(true);
     setError("");
     try {
+      // 1. Sync email update with Firebase Auth if changed
+      if (newEmail && newEmail.toLowerCase() !== oldEmail.toLowerCase()) {
+        try {
+          await updateUserEmail(newEmail);
+        } catch (authErr) {
+          console.error("Auth email update failed:", authErr);
+          if (authErr.code === "auth/requires-recent-login") {
+            setError("For security reasons, changing your login email address requires a recent sign-in. Please log out, log back in, and try again.");
+            setSaving(false);
+            return;
+          }
+          if (authErr.code === "auth/email-already-in-use") {
+            setError("This email address is already registered to another account.");
+            setSaving(false);
+            return;
+          }
+          if (authErr.code === "auth/invalid-email") {
+            setError("Please enter a valid email address.");
+            setSaving(false);
+            return;
+          }
+          setError("Failed to update account login email: " + (authErr.message || authErr));
+          setSaving(false);
+          return;
+        }
+      }
+
+      // 2. Update Firestore members collection
       await updateMember(member.id, {
         name: name.trim(),
         contact: contact.trim(),
-        email: email.trim()
+        email: newEmail
       });
 
+      // 3. Update Firestore users collection profile
       if (member.uid) {
         await updateDocument("users", member.uid, {
           name: name.trim(),
           contact: contact.trim(),
-          email: email.trim()
+          email: newEmail
         });
       }
+      
       onSaved({
         ...member,
         name: name.trim(),
         contact: contact.trim(),
-        email: email.trim()
+        email: newEmail
       });
       onClose();
     } catch (err) {
@@ -1125,7 +1150,7 @@ function CheckInSection({ member }) {
       )}
 
       {/* ── SUCCESS ── */}
-      {scanState === CHECKIN_STATES.SUCCESS && (
+      {scanState === CHECKIN_STATES.SUCCESS && createPortal(
         <div className="lens-success-banner" role="status" aria-live="polite">
           <div className="lens-success-icon" aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
@@ -1139,7 +1164,8 @@ function CheckInSection({ member }) {
           <button className="lens-success-btn" onClick={reset}>
             Done
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── DUPLICATE ── */}
@@ -1207,42 +1233,20 @@ function CheckInSection({ member }) {
 function AttendanceSection({ memberId }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [lastDoc, setLastDoc] = useState(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [viewLevel, setViewLevel] = useState(0); // 0: 5 items, 1: 10 more, 2: all remaining
-
-  const fetchAttendance = useCallback(async (limitCount, cursor = null, isAppend = false) => {
-    setLoading(true);
-    try {
-      const result = await getAttendanceForMemberPaginated(memberId, limitCount, cursor);
-      if (isAppend) {
-        setRecords(prev => [...prev, ...result.records]);
-      } else {
-        setRecords(result.records);
-      }
-      setLastDoc(result.lastDoc);
-      setHasMore(result.hasMore);
-    } catch (err) {
-      console.error("Error fetching attendance:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [memberId]);
+  const [visibleCount, setVisibleCount] = useState(5);
 
   useEffect(() => {
-    if (memberId) {
-      fetchAttendance(5, null, false);
-    }
-  }, [memberId, fetchAttendance]);
+    if (!memberId) return;
+    setLoading(true);
+    const unsub = subscribeToMemberAttendance(memberId, (data) => {
+      setRecords(data);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [memberId]);
 
-  const handleLoadNext = async () => {
-    if (viewLevel === 0) {
-      await fetchAttendance(10, lastDoc, true);
-      setViewLevel(1);
-    } else if (viewLevel === 1) {
-      await fetchAttendance(100, lastDoc, true);
-      setViewLevel(2);
-    }
+  const handleLoadNext = () => {
+    setVisibleCount(prev => prev + 10);
   };
 
   const today = new Date();
@@ -1253,6 +1257,9 @@ function AttendanceSection({ memberId }) {
     const d = new Date(r.dateKey || r.checkInTime);
     return d.getFullYear() === year && d.getMonth() === month;
   }).length;
+
+  const hasMore = records.length > visibleCount;
+  const visibleRecords = records.slice(0, visibleCount);
 
   return (
     <div className="portal-section">
@@ -1268,7 +1275,7 @@ function AttendanceSection({ memberId }) {
         </div>
         <div className="portal-mini-stat" style={{ "--c": "var(--emerald)" }}>
           <span className="portal-mini-val">{records.length}</span>
-          <span className="portal-mini-label">Loaded</span>
+          <span className="portal-mini-label">Total</span>
         </div>
         <div className="portal-mini-stat" style={{ "--c": "var(--violet)" }}>
           <span className="portal-mini-val">
@@ -1282,11 +1289,11 @@ function AttendanceSection({ memberId }) {
         </div>
       </div>
       <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "6px", fontStyle: "italic" }}>
-        *Stats calculated based on currently loaded records. Click "View More" or "View All" below to load more history.
+        *Stats calculated based on your full check-in history. Click "View More" below to load more.
       </p>
 
       <div className="portal-history-list" style={{ marginTop: "24px", display: "flex", flexDirection: "column", gap: "12px" }}>
-        {records.length === 0 && !loading ? (
+        {visibleRecords.length === 0 && !loading ? (
           <div className="empty-state">
             <span className="empty-icon" style={{ fontSize: "2.5rem", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--text-muted)" }}><path d="M12 2v20M2 12h20M7 7l10 10M17 7l-10 10"/></svg>
@@ -1295,7 +1302,7 @@ function AttendanceSection({ memberId }) {
           </div>
         ) : (
           <>
-            {records.map(r => (
+            {visibleRecords.map(r => (
               <div key={r.id} className="portal-log-card">
                 <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
                   <div style={{ width: "42px", height: "42px", borderRadius: "12px", background: "rgba(16,185,129,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--emerald)" }}>
@@ -1327,7 +1334,7 @@ function AttendanceSection({ memberId }) {
                 onClick={handleLoadNext}
                 style={{ padding: "8px", fontSize: "0.85rem", borderRadius: "8px", marginTop: "8px", width: "100%" }}
               >
-                {viewLevel === 0 ? "View More (10 more)" : "View All"}
+                View More
               </button>
             )}
           </>
@@ -1353,6 +1360,7 @@ export default function MemberPortalPage() {
   const [member, setMember] = useState(null);
   const [activeTab, setActiveTab] = useState("profile");
   const [loading, setLoading] = useState(true);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   const memberId = userProfile?.memberId;
 
@@ -1411,7 +1419,13 @@ export default function MemberPortalPage() {
           <div className="portal-loading" style={{ paddingTop: "80px" }}><div className="spinner" /></div>
         ) : (
           <>
-            {activeTab === "profile" && <ProfileSection member={member} onUpdate={setMember} />}
+            {activeTab === "profile" && (
+              <ProfileSection
+                member={member}
+                onUpdate={setMember}
+                onEditProfile={() => setShowEditModal(true)}
+              />
+            )}
             {activeTab === "checkin" && <CheckInSection member={member} />}
             {activeTab === "attendance" && <AttendanceSection memberId={memberId} />}
           </>
@@ -1436,6 +1450,14 @@ export default function MemberPortalPage() {
           </button>
         ))}
       </nav>
+
+      {showEditModal && (
+        <EditProfileModal
+          member={member}
+          onClose={() => setShowEditModal(false)}
+          onSaved={setMember}
+        />
+      )}
     </div>
   );
 }

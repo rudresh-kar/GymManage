@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { logoutUser } from "../firebase/auth";
+import { logoutUser, updateUserEmail } from "../firebase/auth";
+import { updateDocument } from "../firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
 const ownerLinks = [
@@ -68,6 +69,13 @@ export default function Layout({ children, title, subtitle }) {
   const [isProfileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
+  // Email update form states
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [emailSuccess, setEmailSuccess] = useState("");
+  const [updatingEmail, setUpdatingEmail] = useState(false);
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -78,9 +86,56 @@ export default function Layout({ children, title, subtitle }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Reset form states when dropdown closes
+  useEffect(() => {
+    if (!isProfileDropdownOpen) {
+      setIsEditingEmail(false);
+      setNewEmail("");
+      setEmailError("");
+      setEmailSuccess("");
+      setUpdatingEmail(false);
+    }
+  }, [isProfileDropdownOpen]);
+
   const handleLogout = async () => {
     await logoutUser();
     navigate("/login");
+  };
+
+  const handleUpdateEmail = async (e) => {
+    e.preventDefault();
+    if (!newEmail.trim()) return setEmailError("Email is required.");
+    
+    setUpdatingEmail(true);
+    setEmailError("");
+    setEmailSuccess("");
+    try {
+      // 1. Update in Firebase Auth
+      await updateUserEmail(newEmail.trim());
+
+      // 2. Update in Firestore users collection
+      if (user?.uid) {
+        await updateDocument("users", user.uid, {
+          email: newEmail.trim()
+        });
+      }
+
+      setEmailSuccess("Email updated successfully!");
+      setIsEditingEmail(false);
+    } catch (err) {
+      console.error("Failed to update owner email:", err);
+      if (err.code === "auth/requires-recent-login") {
+        setEmailError("For security, please logout and log back in to verify your session first.");
+      } else if (err.code === "auth/email-already-in-use") {
+        setEmailError("This email is already in use by another account.");
+      } else if (err.code === "auth/invalid-email") {
+        setEmailError("Please enter a valid email address.");
+      } else {
+        setEmailError(err.message || "Failed to update email.");
+      }
+    } finally {
+      setUpdatingEmail(false);
+    }
   };
 
   const closeSidebar = () => setSidebarOpen(false);
@@ -194,14 +249,103 @@ export default function Layout({ children, title, subtitle }) {
                   gap: "12px"
                 }}
               >
-                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                 <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                   <span style={{ fontSize: "0.72rem", color: "var(--text-muted, #6b7280)", textTransform: "uppercase", fontWeight: "bold", letterSpacing: "0.05em" }}>Owner Name</span>
                   <span style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text-primary, #111827)" }}>{userProfile?.name || "Gym Owner"}</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted, #6b7280)", textTransform: "uppercase", fontWeight: "bold", letterSpacing: "0.05em" }}>Email Address</span>
-                  <span style={{ fontSize: "0.85rem", color: "var(--text-secondary, #4b5563)", wordBreak: "break-all" }}>{userProfile?.email || user?.email}</span>
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted, #6b7280)", textTransform: "uppercase", fontWeight: "bold", letterSpacing: "0.05em" }}>Contact Number</span>
+                  <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text-primary, #111827)" }}>{userProfile?.contact || "—"}</span>
                 </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted, #6b7280)", textTransform: "uppercase", fontWeight: "bold", letterSpacing: "0.05em" }}>Email Address</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <span style={{ fontSize: "0.85rem", color: "var(--text-secondary, #4b5563)", wordBreak: "break-all" }}>{userProfile?.email || user?.email}</span>
+                    {userProfile?.email?.endsWith("@flexpro.in") && (
+                      <span style={{ fontSize: "0.7rem", color: "var(--amber, #d97706)", fontWeight: "600", marginTop: "2px" }}>
+                        ⚠️ Using dummy email
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {isEditingEmail ? (
+                  <form onSubmit={handleUpdateEmail} style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+                    <input
+                      type="email"
+                      placeholder="Enter new email..."
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      required
+                      style={{
+                        padding: "6px 10px",
+                        fontSize: "0.8rem",
+                        borderRadius: "6px",
+                        border: "1px solid var(--border, #e5e7eb)",
+                        background: "var(--bg-base, #f9fafb)",
+                        color: "var(--text-primary, #111827)",
+                        width: "100%"
+                      }}
+                    />
+                    {emailError && (
+                      <span style={{ fontSize: "0.7rem", color: "var(--rose, #ef4444)", fontWeight: "500" }}>{emailError}</span>
+                    )}
+                    <div style={{ display: "flex", gap: "6px", marginTop: "2px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingEmail(false)}
+                        className="btn btn-ghost"
+                        style={{ padding: "4px 8px", fontSize: "0.75rem", borderRadius: "6px", flex: 1, borderColor: "var(--border)" }}
+                        disabled={updatingEmail}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        style={{ padding: "4px 8px", fontSize: "0.75rem", borderRadius: "6px", flex: 1 }}
+                        disabled={updatingEmail}
+                      >
+                        {updatingEmail ? "Saving..." : "Save"}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const isDummy = userProfile?.email?.endsWith("@flexpro.in");
+                        setNewEmail(isDummy ? "" : (userProfile?.email || ""));
+                        setIsEditingEmail(true);
+                      }}
+                      className="btn btn-ghost"
+                      style={{
+                        padding: "6px 10px",
+                        fontSize: "0.75rem",
+                        borderRadius: "6px",
+                        width: "100%",
+                        textAlign: "center",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "4px",
+                        borderColor: "var(--border)"
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                      {userProfile?.email?.endsWith("@flexpro.in") ? "Add Real Email" : "Update Email"}
+                    </button>
+                    {emailSuccess && (
+                      <span style={{ fontSize: "0.7rem", color: "var(--emerald, #10b981)", fontWeight: "500", textAlign: "center" }}>
+                        ✓ {emailSuccess}
+                      </span>
+                    )}
+                  </>
+                )}
                 <hr style={{ border: "none", borderTop: "1px solid var(--border, #e5e7eb)", margin: "4px 0" }} />
                 <button
                   onClick={handleLogout}

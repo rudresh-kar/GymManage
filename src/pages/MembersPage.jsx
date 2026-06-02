@@ -6,7 +6,7 @@ import {
   deleteMember,
   createUserProfile,
   updateMember,
-  getAttendanceForMemberPaginated,
+  subscribeToMemberAttendance,
   addPayment,
   updateDocument
 } from "../firebase/firestore";
@@ -608,42 +608,20 @@ function EditMemberModal({ member, onClose, onSaved }) {
 export function MemberStatsModal({ member, onClose }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [lastDoc, setLastDoc] = useState(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [viewLevel, setViewLevel] = useState(0); // 0: 5 items, 1: 10 more, 2: all remaining
-
-  const fetchAttendance = useCallback(async (limitCount, cursor = null, isAppend = false) => {
-    setLoading(true);
-    try {
-      const result = await getAttendanceForMemberPaginated(member.id, limitCount, cursor);
-      if (isAppend) {
-        setRecords((prev) => [...prev, ...result.records]);
-      } else {
-        setRecords(result.records);
-      }
-      setLastDoc(result.lastDoc);
-      setHasMore(result.hasMore);
-    } catch (err) {
-      console.error("Error fetching attendance history:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [member.id]);
+  const [visibleCount, setVisibleCount] = useState(5);
 
   useEffect(() => {
-    if (member?.id) {
-      fetchAttendance(5, null, false);
-    }
-  }, [member?.id, fetchAttendance]);
+    if (!member?.id) return;
+    setLoading(true);
+    const unsub = subscribeToMemberAttendance(member.id, (data) => {
+      setRecords(data);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [member?.id]);
 
-  const handleLoadNext = async () => {
-    if (viewLevel === 0) {
-      await fetchAttendance(10, lastDoc, true);
-      setViewLevel(1);
-    } else if (viewLevel === 1) {
-      await fetchAttendance(100, lastDoc, true);
-      setViewLevel(2);
-    }
+  const handleLoadNext = () => {
+    setVisibleCount((prev) => prev + 10);
   };
 
   const status = getMemberStatus(member.startDate, member.plan);
@@ -714,7 +692,7 @@ export function MemberStatsModal({ member, onClose }) {
             <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem", padding: "20px" }}>No check-in history found.</p>
           ) : (
             <>
-              {records.map((r) => (
+              {records.slice(0, visibleCount).map((r) => (
                 <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "var(--bg-base)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "0.85rem" }}>
                   <span>{new Date(r.checkInTime).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</span>
                   <strong style={{ color: "var(--cyan)" }}>
@@ -727,14 +705,14 @@ export function MemberStatsModal({ member, onClose }) {
                   <div className="spinner" style={{ width: 20, height: 20, margin: "0 auto" }} />
                 </div>
               )}
-              {hasMore && !loading && (
+              {records.length > visibleCount && !loading && (
                 <button
                   type="button"
                   className="btn btn-ghost"
                   onClick={handleLoadNext}
                   style={{ padding: "6px", fontSize: "0.8rem", borderRadius: "8px", marginTop: "4px", width: "100%" }}
                 >
-                  {viewLevel === 0 ? "View More (10 more)" : "View All"}
+                  View More
                 </button>
               )}
             </>
