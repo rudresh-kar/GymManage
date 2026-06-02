@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { logoutUser } from "../firebase/auth";
@@ -65,6 +65,18 @@ export default function Layout({ children, title, subtitle }) {
   const { user, role, userProfile } = useAuth();
   const navigate = useNavigate();
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [isProfileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setProfileDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleLogout = async () => {
     await logoutUser();
@@ -153,28 +165,71 @@ export default function Layout({ children, title, subtitle }) {
             </div>
           </div>
           
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            {role === "gymowner" && (
-              <button 
-                className="portal-logout-btn" 
-                onClick={handleLogout} 
-                title="Logout"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" x2="9" y1="12" y2="12" />
-                </svg>
-              </button>
-            )}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", position: "relative" }} ref={dropdownRef}>
             <div
               className="topbar-avatar"
-              onClick={() => navigate(role === "admin" ? "/super-admin" : "/dashboard")}
+              onClick={() => setProfileDropdownOpen(!isProfileDropdownOpen)}
               style={{ cursor: "pointer" }}
               title="View Profile"
             >
               {userProfile?.name?.[0]?.toUpperCase() || user?.displayName?.[0]?.toUpperCase() || "A"}
             </div>
+
+            {isProfileDropdownOpen && (
+              <div 
+                className="profile-dropdown"
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "48px",
+                  background: "var(--bg-card, #ffffff)",
+                  border: "1px solid var(--border, #e5e7eb)",
+                  borderRadius: "12px",
+                  boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
+                  padding: "16px",
+                  minWidth: "220px",
+                  zIndex: 1000,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px"
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted, #6b7280)", textTransform: "uppercase", fontWeight: "bold", letterSpacing: "0.05em" }}>Owner Name</span>
+                  <span style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text-primary, #111827)" }}>{userProfile?.name || "Gym Owner"}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted, #6b7280)", textTransform: "uppercase", fontWeight: "bold", letterSpacing: "0.05em" }}>Email Address</span>
+                  <span style={{ fontSize: "0.85rem", color: "var(--text-secondary, #4b5563)", wordBreak: "break-all" }}>{userProfile?.email || user?.email}</span>
+                </div>
+                <hr style={{ border: "none", borderTop: "1px solid var(--border, #e5e7eb)", margin: "4px 0" }} />
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "8px 12px",
+                    background: "none",
+                    border: "none",
+                    color: "var(--rose, #ef4444)",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    borderRadius: "6px",
+                    textAlign: "left"
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" x2="9" y1="12" y2="12" />
+                  </svg>
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </header>
 

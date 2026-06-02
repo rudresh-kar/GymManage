@@ -813,32 +813,40 @@ Thank you for being a valued member! 💪
       style={{ "--member-accent": colors.accent }}
     >
       {/* Header */}
-      <div className="member-card-header">
-        <div
-          className="member-avatar"
-          style={{ background: colors.gradient }}
-          aria-hidden="true"
-        >
-          {initials(member.name)}
-        </div>
-        <div>
+      <div className="member-card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
           <div
-            className="member-name"
-            onClick={() => onViewStats(member)}
-            style={{ cursor: "pointer", textDecoration: "underline", textDecorationColor: "rgba(37,99,235,0.4)" }}
+            className="member-avatar"
+            style={{ background: colors.gradient }}
+            aria-hidden="true"
           >
-            {member.name}
+            {initials(member.name)}
           </div>
-          <div className="member-contact" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--text-muted)" }}>
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-            </svg>
-            {member.contact ? (
-              <a href={`tel:${member.contact}`} style={{ color: "inherit", textDecoration: "underline" }}>
-                {member.contact}
-              </a>
-            ) : "—"}
+          <div>
+            <div
+              className="member-name"
+              onClick={() => onViewStats(member)}
+              style={{ cursor: "pointer", textDecoration: "underline", textDecorationColor: "rgba(37,99,235,0.4)" }}
+            >
+              {member.name}
+            </div>
+            <div className="member-contact" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--text-muted)" }}>
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+              </svg>
+              {member.contact ? (
+                <a href={`tel:${member.contact}`} style={{ color: "inherit", textDecoration: "underline" }}>
+                  {member.contact}
+                </a>
+              ) : "—"}
+            </div>
           </div>
+        </div>
+
+        {/* Badges container at top-right */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "flex-end", flexShrink: 0 }}>
+          <span className={`badge badge-plan`} style={{ whiteSpace: "nowrap" }}>{member.plan}</span>
+          <span className={`badge ${status.cls}`} style={{ whiteSpace: "nowrap" }}>{status.label}</span>
         </div>
       </div>
 
@@ -855,13 +863,8 @@ Thank you for being a valued member! 💪
       </div>
 
       {/* Footer */}
-      <div className="member-card-footer">
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <span className={`badge badge-plan`}>{member.plan}</span>
-          <span className={`badge ${status.cls}`}>{status.label}</span>
-        </div>
-
-        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+      <div className="member-card-footer" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", width: "100%" }}>
           {(status.label === "Expiring Soon" || status.label === "Expired") && (
             <button
               type="button"

@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { subscribeToMembers, updateDocument } from "../firebase/firestore";
+import { subscribeToMembers, subscribeToTodayAttendance, updateDocument } from "../firebase/firestore";
 import Layout from "../components/Layout";
 
 // ─── Gym QR Code Section ──────────────────────────────────────────────────────
@@ -349,6 +349,7 @@ function getMemberStatus(startDate, plan, endDate) {
 export default function DashboardPage() {
   const { user, userProfile, gymId } = useAuth();
   const [memberCount, setMemberCount] = useState(0);
+  const [todayCheckins, setTodayCheckins] = useState(0);
   const [expiringCount, setExpiringCount] = useState(0);
   const [expiredCount, setExpiredCount] = useState(0);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
@@ -421,7 +422,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!gymId) return;
-    const unsubscribe = subscribeToMembers(gymId, (members) => {
+    const unsubMembers = subscribeToMembers(gymId, (members) => {
       setMemberCount(members.length);
       let exp = 0, expSoon = 0;
       members.forEach((m) => {
@@ -432,13 +433,31 @@ export default function DashboardPage() {
       setExpiringCount(expSoon);
       setExpiredCount(exp);
     });
-    return () => unsubscribe();
+
+    const unsubAttendance = subscribeToTodayAttendance(gymId, (records) => {
+      setTodayCheckins(records.length);
+    });
+
+    return () => {
+      unsubMembers();
+      unsubAttendance();
+    };
   }, [gymId]);
 
   const pricing = userProfile?.planPricing || {};
 
   return (
     <Layout title="Dashboard" subtitle={`Welcome back, ${userProfile?.name || user?.email}`}>
+      <style>{`
+        .hover-card-effect {
+          transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+        .hover-card-effect:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          border-color: var(--cyan) !important;
+        }
+      `}</style>
       <div className="page-section dashboard-grid">
         
         {/* Left Side: Profile and Stats Details */}
@@ -453,32 +472,49 @@ export default function DashboardPage() {
           
           <div className="gym-qr-card" style={{ background: "#ffffff", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", borderRadius: "16px", padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
             
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "bold" }}>Owner Name</span>
-              <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text-primary)" }}>{userProfile?.name || "Gym Owner"}</span>
-            </div>
+            {/* Gym Name & Location in the same line (flexible & wrapping) */}
+            <div style={{ display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "24px", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: "1 1 200px" }}>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>Gym Name</span>
+                <span style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--cyan)", wordBreak: "break-word" }}>{userProfile?.gymName || "My Gym"}</span>
+              </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "bold" }}>Email Address</span>
-              <span style={{ fontSize: "1rem", color: "var(--text-secondary)" }}>{userProfile?.email || user?.email}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", flex: "1 1 200px" }}>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>Location / Address</span>
+                <span style={{ fontSize: "0.95rem", color: "var(--text-secondary)", fontWeight: 600, wordBreak: "break-word" }}>{userProfile?.gymAddress || "Not specified"}</span>
+              </div>
             </div>
 
             <hr style={{ border: "none", borderTop: "1px solid var(--border)" }} />
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "bold" }}>Gym Name</span>
-              <span style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--cyan)" }}>{userProfile?.gymName || "My Gym"}</span>
-            </div>
+            {/* Containerized GPS Coordinates Block */}
+            <div style={{ background: "var(--bg-surface, #f9fafb)", borderRadius: "12px", padding: "16px", border: "1px solid var(--border, #f3f4f6)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.05em" }}>Gym GPS Coordinates</span>
+                {!isEditingLocation && (
+                  <button
+                    onClick={() => {
+                      setTempLat(userProfile?.gymLat ? String(userProfile.gymLat) : "");
+                      setTempLng(userProfile?.gymLng ? String(userProfile.gymLng) : "");
+                      setIsEditingLocation(true);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--cyan)",
+                      fontSize: "0.78rem",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                      padding: 0
+                    }}
+                  >
+                    {userProfile?.gymLat ? "Edit" : "Set Location"}
+                  </button>
+                )}
+              </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "bold" }}>Location / Address</span>
-              <span style={{ fontSize: "0.95rem", color: "var(--text-secondary)" }}>{userProfile?.gymAddress || "Not specified"}</span>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: "bold" }}>Gym GPS Coordinates</span>
               {isEditingLocation ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                   <div style={{ display: "flex", gap: "8px" }}>
                     <input
                       type="text"
@@ -491,7 +527,7 @@ export default function DashboardPage() {
                         fontSize: "0.85rem",
                         borderRadius: "8px",
                         border: "1px solid var(--border)",
-                        background: "var(--bg-surface)",
+                        background: "#ffffff",
                         color: "var(--text-primary)",
                         outline: "none"
                       }}
@@ -507,7 +543,7 @@ export default function DashboardPage() {
                         fontSize: "0.85rem",
                         borderRadius: "8px",
                         border: "1px solid var(--border)",
-                        background: "var(--bg-surface)",
+                        background: "#ffffff",
                         color: "var(--text-primary)",
                         outline: "none"
                       }}
@@ -517,11 +553,11 @@ export default function DashboardPage() {
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      style={{ flex: 1, padding: "8px 12px", fontSize: "0.8rem", borderRadius: "8px", background: "var(--bg-surface)" }}
+                      style={{ flex: 1, padding: "8px 12px", fontSize: "0.8rem", borderRadius: "8px", background: "#ffffff" }}
                       onClick={handleDetectLocation}
                       disabled={detectingLocation}
                     >
-                      {detectingLocation ? "Detecting..." : "📍 Pin Current Location"}
+                      {detectingLocation ? "Detecting..." : "📍 Detect Location"}
                     </button>
                     <button
                       className="btn btn-primary"
@@ -532,7 +568,7 @@ export default function DashboardPage() {
                     </button>
                     <button
                       className="btn btn-ghost"
-                      style={{ padding: "8px 14px", fontSize: "0.8rem", borderRadius: "8px" }}
+                      style={{ padding: "8px 14px", fontSize: "0.8rem", borderRadius: "8px", background: "#ffffff" }}
                       onClick={() => setIsEditingLocation(false)}
                     >
                       Cancel
@@ -540,70 +576,103 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ) : (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginTop: "2px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <span style={{ fontSize: "0.95rem", color: userProfile?.gymLat ? "var(--text-secondary)" : "var(--text-muted)", fontWeight: userProfile?.gymLat ? 600 : "normal" }}>
-                      {userProfile?.gymLat && userProfile?.gymLng ? (
-                        `🌐 ${userProfile.gymLat}, ${userProfile.gymLng}`
-                      ) : "No location pinned (check-in geolocation validation is disabled)"}
-                    </span>
-                    {userProfile?.gymLat && userProfile?.gymLng && (
-                      <span style={{ fontSize: "0.85rem" }}>
-                        <a
-                          href={`https://www.google.com/maps?q=${userProfile.gymLat},${userProfile.gymLng}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: "var(--cyan)", textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-start", textAlign: "left" }}>
+                  <span style={{ fontSize: "0.95rem", color: userProfile?.gymLat ? "var(--text-primary)" : "var(--text-muted)", fontWeight: userProfile?.gymLat ? 600 : "normal", display: "flex", alignItems: "center", gap: "8px" }}>
+                    {userProfile?.gymLat && userProfile?.gymLng ? (
+                      <>
+                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "16px", color: "var(--cyan)" }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+                            <path d="M2 12h20"/>
+                          </svg>
+                        </span>
+                        {userProfile.gymLat}, {userProfile.gymLng}
+                      </>
+                    ) : "No location pinned (check-in validation disabled)"}
+                  </span>
+                  {userProfile?.gymLat && userProfile?.gymLng && (
+                    <span style={{ fontSize: "0.82rem", marginTop: "2px", display: "flex", alignItems: "center" }}>
+                      <a
+                        href={`https://www.google.com/maps?q=${userProfile.gymLat},${userProfile.gymLng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: "var(--cyan)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "8px", fontWeight: 500 }}
+                      >
+                        <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "16px" }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                             <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
                             <circle cx="12" cy="10" r="3"/>
                           </svg>
-                          Open Google Maps Link
-                        </a>
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => {
-                      setTempLat(userProfile?.gymLat ? String(userProfile.gymLat) : "");
-                      setTempLng(userProfile?.gymLng ? String(userProfile.gymLng) : "");
-                      setIsEditingLocation(true);
-                    }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--cyan)",
-                      fontSize: "0.8rem",
-                      fontWeight: "600",
-                      cursor: "pointer",
-                      padding: 0
-                    }}
-                  >
-                    {userProfile?.gymLat ? "Edit" : "Set Location"}
-                  </button>
+                        </span>
+                        Open in Google Maps
+                      </a>
+                    </span>
+                  )}
                 </div>
               )}
             </div>
 
             <hr style={{ border: "none", borderTop: "1px solid var(--border)" }} />
 
-            <div 
-              onClick={() => navigate("/members")}
-              style={{ display: "flex", alignItems: "center", gap: "16px", cursor: "pointer" }}
-              title="View registered members"
-            >
-              <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "rgba(37,99,235,0.08)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                  <circle cx="9" cy="7" r="4"/>
-                  <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
+            {/* Total Members & Today Checkins styled as interactive card tiles */}
+            <div style={{ display: "flex", flexDirection: "row", gap: "16px", flexWrap: "wrap" }}>
+              <div 
+                onClick={() => navigate("/members")}
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "16px", 
+                  cursor: "pointer", 
+                  flex: "1 1 140px",
+                  background: "var(--bg-surface, #f9fafb)",
+                  border: "1px solid var(--border, #f3f4f6)",
+                  borderRadius: "12px",
+                  padding: "16px"
+                }}
+                className="hover-card-effect"
+                title="View registered members"
+              >
+                <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(6,182,212,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                    <circle cx="9" cy="7" r="4"/>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <span style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text-primary)", lineHeight: 1 }}>{memberCount}</span>
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.02em" }}>Total Members</span>
+                </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text-primary)" }}>{memberCount}</span>
-                <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", textTransform: "uppercase", textDecoration: "underline", textDecorationColor: "rgba(37,99,235,0.3)" }}>Total Registered Members</span>
+
+              <div 
+                onClick={() => navigate("/attendance")}
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "16px", 
+                  cursor: "pointer", 
+                  flex: "1 1 140px",
+                  background: "var(--bg-surface, #f9fafb)",
+                  border: "1px solid var(--border, #f3f4f6)",
+                  borderRadius: "12px",
+                  padding: "16px"
+                }}
+                className="hover-card-effect"
+                title="View today's check-ins"
+              >
+                <div style={{ width: "42px", height: "42px", borderRadius: "50%", background: "rgba(16,185,129,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                    <polyline points="22 4 12 14.01 9 11.01"/>
+                  </svg>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <span style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text-primary)", lineHeight: 1 }}>{todayCheckins}</span>
+                  <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.02em" }}>Today's Checkins</span>
+                </div>
               </div>
             </div>
           </div>
@@ -611,8 +680,11 @@ export default function DashboardPage() {
           {/* ── Plan Pricing Card ────────────────────────────────── */}
           <h3 className="section-title" style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--cyan)" }}>
-              <line x1="12" x2="12" y1="2" y2="22"/>
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              <path d="M6 3h12" />
+              <path d="M6 8h12" />
+              <path d="m6 13 8.5 8" />
+              <path d="M6 13h3" />
+              <path d="M9 13c6.667 0 6.667-10 0-10" />
             </svg>
             Plan Pricing
           </h3>

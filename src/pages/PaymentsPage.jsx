@@ -338,7 +338,13 @@ export default function PaymentsPage() {
                               }}
                               onClick={() => setCollectingPayment(p)}
                             >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M6 3h12" />
+                                <path d="M6 8h12" />
+                                <path d="m6 13 8.5 8" />
+                                <path d="M6 13h3" />
+                                <path d="M9 13c6.667 0 6.667-10 0-10" />
+                              </svg>
                               Collect Due
                             </button>
                           ) : (
@@ -406,7 +412,13 @@ function CollectDueModal({ payment, onClose, onSaved }) {
       <div className="modal-content" style={{ maxWidth: "400px" }}>
         <div className="modal-header">
           <h2 className="modal-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--rose)" }}><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--rose)" }}>
+              <path d="M6 3h12" />
+              <path d="M6 8h12" />
+              <path d="m6 13 8.5 8" />
+              <path d="M6 13h3" />
+              <path d="M9 13c6.667 0 6.667-10 0-10" />
+            </svg>
             Collect Due Payment
           </h2>
           <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
