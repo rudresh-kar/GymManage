@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { onAuthChange } from "../firebase/auth";
+import { onAuthChange, logoutUser } from "../firebase/auth";
 import { subscribeToUserProfile } from "../firebase/firestore";
 
 const AuthContext = createContext(null);
@@ -22,7 +22,7 @@ export function AuthProvider({ children }) {
           if (profile === null) {
             // Profile document is missing/deleted (e.g. member deleted by gym owner).
             // Sign out the user automatically.
-            import("../firebase/auth").then(({ logoutUser }) => logoutUser());
+            logoutUser();
             setUserProfile(null);
           } else {
             setUserProfile(profile);
