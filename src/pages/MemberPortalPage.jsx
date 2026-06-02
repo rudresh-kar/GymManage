@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { useAuth } from "../contexts/AuthContext";
 import { logoutUser, updateUserEmail } from "../firebase/auth";
+import { BRAND_NAME } from "../constants";
 import {
   getMember,
   subscribeToMemberAttendance,
@@ -548,7 +549,7 @@ function ProfileSection({ member, onUpdate, onEditProfile }) {
 
     ctx.fillStyle = "#111111";
     ctx.font = `900 ${brandFs}px Inter, Segoe UI, system-ui, sans-serif`;
-    ctx.fillText("FlexPro.in", centerX, curY);
+    ctx.fillText(`${BRAND_NAME}.in`, centerX, curY);
     curY += brandFs + 8 * scale;
 
     ctx.fillStyle = "#555555";
@@ -616,7 +617,7 @@ function ProfileSection({ member, onUpdate, onEditProfile }) {
 
     ctx.fillStyle = "#aaaaaa";
     ctx.font = `400 ${footerFs}px Inter, Segoe UI, system-ui, sans-serif`;
-    ctx.fillText("Powered by FlexPro.in — Gym Attendance Management System", centerX, curY);
+    ctx.fillText(`Powered by ${BRAND_NAME}.in — Gym Attendance Management System`, centerX, curY);
 
     const link = document.createElement("a");
     link.download = `${gymName.replace(/\s+/g, "_")}_QR_Code.png`;
@@ -1399,7 +1400,7 @@ export default function MemberPortalPage() {
           <span style={{ display: "inline-flex", alignItems: "center", color: "var(--cyan)" }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6.5 6.5 11 11"/><path d="m21 21-1-1"/><path d="m3 3 1 1"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/><path d="M6.5 12.5 12.5 6.5"/><path d="m11.5 17.5 6-6"/></svg>
           </span>
-          <span className="portal-topbar-brand" style={{ marginLeft: "6px" }}>FlexPro</span>
+          <span className="portal-topbar-brand" style={{ marginLeft: "6px" }}>{BRAND_NAME}</span>
         </div>
         <div className="portal-topbar-right">
           <span className="portal-topbar-name">{userProfile?.name || user?.email}</span>

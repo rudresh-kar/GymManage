@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { logoutUser, updateUserEmail } from "../firebase/auth";
 import { updateDocument } from "../firebase/firestore";
 import { useNavigate } from "react-router-dom";
+import { BRAND_NAME } from "../constants";
 
 const ownerLinks = [
   { 
@@ -165,7 +166,7 @@ export default function Layout({ children, title, subtitle }) {
               <path d="m11.5 17.5 6-6"/>
             </svg>
           </span>
-          <span className="logo-text">FlexPro</span>
+          <span className="logo-text">{BRAND_NAME}</span>
           <button className="sidebar-close-btn" onClick={closeSidebar}>✕</button>
         </div>
 

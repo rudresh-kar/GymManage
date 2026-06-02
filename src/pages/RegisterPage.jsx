@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { registerUser } from "../firebase/auth";
 import { createUserProfile, getAllGymOwners, addMember } from "../firebase/firestore";
+import { BRAND_NAME } from "../constants";
 
 const PLAN_DAYS = { "1 Month": 30, "3 Months": 90, "1 Year": 365 };
 
@@ -138,7 +139,7 @@ export default function RegisterPage() {
               <path d="m11.5 17.5 6-6"/>
             </svg>
           </span>
-          <h1 className="logo-text">FlexPro</h1>
+          <h1 className="logo-text">{BRAND_NAME}</h1>
           <p className="logo-sub">Gym Management</p>
         </div>
 

@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import Layout from "../components/Layout";
 import { useAuth } from "../contexts/AuthContext";
 import { subscribeToGymPayments, updateDocument } from "../firebase/firestore";
+import { BRAND_NAME } from "../constants";
+import { jsPDF } from "jspdf";
 
 function fmt(dateStr) {
   if (!dateStr) return "—";
@@ -20,6 +22,323 @@ export default function PaymentsPage() {
   const [methodFilter, setMethodFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [collectingPayment, setCollectingPayment] = useState(null);
+
+  // PDF Export States
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadPreset, setDownloadPreset] = useState("this_month");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [applyFilters, setApplyFilters] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  const resolveRange = () => {
+    const today = new Date();
+    let start, end;
+    
+    if (downloadPreset === "this_month") {
+      start = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
+      end = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else if (downloadPreset === "last_month") {
+      start = new Date(today.getFullYear(), today.getMonth() - 1, 1, 0, 0, 0, 0);
+      end = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
+    } else if (downloadPreset === "last_3_months") {
+      start = new Date(today.getFullYear(), today.getMonth() - 3, 1, 0, 0, 0, 0);
+      end = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+    } else {
+      if (customStart) {
+        const parts = customStart.split("-");
+        start = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0, 0);
+      } else {
+        start = new Date(1970, 0, 1, 0, 0, 0, 0);
+      }
+      
+      if (customEnd) {
+        const parts = customEnd.split("-");
+        end = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 23, 59, 59, 999);
+      } else {
+        end = new Date();
+      }
+    }
+    return { start, end };
+  };
+
+  const handleDownloadPDF = async () => {
+    setGenerating(true);
+    try {
+      const { start, end } = resolveRange();
+
+      // 1. Filter payment records by range
+      let recordsToExport = payments.filter((p) => {
+        const pDate = new Date(p.renewalDate || p.createdAt?.toDate?.() || p.createdAt);
+        return pDate >= start && pDate <= end;
+      });
+
+      // 2. Apply active table filters if toggle is checked
+      if (applyFilters) {
+        recordsToExport = recordsToExport.filter((p) => {
+          const matchesSearch =
+            p.memberName?.toLowerCase().includes(search.toLowerCase()) ||
+            p.memberContact?.includes(search);
+
+          const matchesMethod = methodFilter === "All" || p.paymentMethod === methodFilter;
+
+          let matchesStatus = true;
+          if (statusFilter === "Fully Paid") {
+            matchesStatus = (p.dueAmount || 0) === 0;
+          } else if (statusFilter === "Has Dues") {
+            matchesStatus = (p.dueAmount || 0) > 0;
+          }
+
+          return matchesSearch && matchesMethod && matchesStatus;
+        });
+      }
+
+      // Sort chronological (newest first like table)
+      recordsToExport.sort((a, b) => {
+        const da = new Date(a.renewalDate || a.createdAt?.toDate?.() || a.createdAt);
+        const db = new Date(b.renewalDate || b.createdAt?.toDate?.() || b.createdAt);
+        return db - da;
+      });
+
+      // 3. Generate PDF
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      
+      const PRIMARY = [6, 182, 212];
+      const TEXT_DARK = [31, 41, 55];
+      const TEXT_MUTED = [107, 114, 128];
+      const LIGHT_BG = [249, 250, 251];
+      const BORDER = [229, 231, 235];
+      const GREEN = [16, 185, 129];
+      const RED = [244, 63, 94];
+
+      const drawChrome = (pageNum, totalPages) => {
+        doc.setFillColor(...PRIMARY);
+        doc.rect(0, 0, pageWidth, 4, "F");
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(...TEXT_MUTED);
+        doc.text(`Powered by ${BRAND_NAME}.in — Gym Management System`, 14, pageHeight - 10);
+        doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - 14, pageHeight - 10, { align: "right" });
+      };
+
+      const totalPaid = recordsToExport.reduce((sum, p) => sum + (p.amountPaid || 0), 0);
+      const totalDue = recordsToExport.reduce((sum, p) => sum + (p.dueAmount || 0), 0);
+      const gymName = userProfile?.gymName || "Titan Gym";
+      const gymAddress = userProfile?.gymAddress || "";
+
+      let yPos = 20;
+
+      // Page Title & Gym Branding Header
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(...TEXT_DARK);
+      doc.text(gymName, 14, yPos);
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(...PRIMARY);
+      doc.text(BRAND_NAME.toUpperCase(), pageWidth - 14, yPos, { align: "right" });
+      
+      yPos += 6;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(...TEXT_MUTED);
+      if (gymAddress) {
+        doc.text(gymAddress, 14, yPos);
+      }
+      doc.text("TRANSACTION REPORT", pageWidth - 14, yPos, { align: "right" });
+      
+      yPos += 8;
+      doc.setDrawColor(...BORDER);
+      doc.setLineWidth(0.5);
+      doc.line(14, yPos, pageWidth - 14, yPos);
+
+      yPos += 8;
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(...TEXT_DARK);
+      const fmtShortDate = (d) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+      doc.text(`Report Period: ${fmtShortDate(start)} to ${fmtShortDate(end)}`, 14, yPos);
+      
+      const genDateStr = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
+      doc.text(`Generated: ${genDateStr}`, pageWidth - 14, yPos, { align: "right" });
+
+      yPos += 12;
+
+      // Summary Cards Block
+      const colW = (pageWidth - 28 - 12) / 3;
+      
+      doc.setFillColor(...LIGHT_BG);
+      doc.setDrawColor(...BORDER);
+      doc.rect(14, yPos, colW, 20, "FD");
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...TEXT_MUTED);
+      doc.text("TOTAL REVENUE", 18, yPos + 6);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(...GREEN);
+      doc.text(`INR ${totalPaid.toLocaleString("en-IN")}`, 18, yPos + 14);
+
+      const x2 = 14 + colW + 6;
+      doc.setFillColor(...LIGHT_BG);
+      doc.rect(x2, yPos, colW, 20, "FD");
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...TEXT_MUTED);
+      doc.text("PENDING DUES", x2 + 4, yPos + 6);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(...(totalDue > 0 ? RED : TEXT_DARK));
+      doc.text(`INR ${totalDue.toLocaleString("en-IN")}`, x2 + 4, yPos + 14);
+
+      const x3 = 14 + (colW * 2) + 12;
+      doc.setFillColor(...LIGHT_BG);
+      doc.rect(x3, yPos, colW, 20, "FD");
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(...TEXT_MUTED);
+      doc.text("TOTAL BILLS", x3 + 4, yPos + 6);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(...PRIMARY);
+      doc.text(`${recordsToExport.length} Bills`, x3 + 4, yPos + 14);
+
+      yPos += 28;
+
+      // Table Header
+      doc.setFillColor(...PRIMARY);
+      doc.rect(14, yPos, pageWidth - 28, 8, "F");
+      
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      doc.text("Date", 16, yPos + 5.5);
+      doc.text("Member Details", 42, yPos + 5.5);
+      doc.text("Plan", 95, yPos + 5.5);
+      doc.text("Method", 125, yPos + 5.5);
+      doc.text("Paid", 152, yPos + 5.5);
+      doc.text("Due", 178, yPos + 5.5);
+
+      yPos += 8;
+
+      // Group records into pages beforehand
+      const pages = [[]];
+      let simulatedY = yPos;
+      
+      recordsToExport.forEach((p) => {
+        const availableHeight = pageHeight - 15 - simulatedY;
+        if (availableHeight < 10) {
+          pages.push([]);
+          simulatedY = 38;
+        }
+        pages[pages.length - 1].push(p);
+        simulatedY += 8;
+      });
+
+      const totalPages = pages.length;
+      let currentY = yPos;
+
+      // Draw first page
+      pages[0].forEach((p, idx) => {
+        if (idx % 2 === 1) {
+          doc.setFillColor(243, 244, 246);
+          doc.rect(14, currentY, pageWidth - 28, 8, "F");
+        }
+        
+        doc.setTextColor(...TEXT_DARK);
+        const pDateStr = fmt(p.renewalDate || p.createdAt?.toDate?.() || p.createdAt);
+        doc.text(pDateStr, 16, currentY + 5.5);
+        
+        const truncatedName = p.memberName?.length > 22 ? p.memberName.slice(0, 20) + ".." : p.memberName;
+        doc.text(`${truncatedName} (${p.memberContact})`, 42, currentY + 5.5);
+        
+        doc.text(p.planType || "—", 95, currentY + 5.5);
+        doc.text(p.paymentMethod || "—", 125, currentY + 5.5);
+        
+        doc.setTextColor(...GREEN);
+        doc.text(`INR ${p.amountPaid?.toLocaleString("en-IN") || 0}`, 152, currentY + 5.5);
+        
+        doc.setTextColor(...((p.dueAmount || 0) > 0 ? RED : TEXT_MUTED));
+        doc.text(`INR ${p.dueAmount?.toLocaleString("en-IN") || 0}`, 178, currentY + 5.5);
+        
+        currentY += 8;
+      });
+
+      drawChrome(1, totalPages);
+
+      // Draw subsequent pages
+      for (let pIdx = 1; pIdx < totalPages; pIdx++) {
+        doc.addPage();
+        currentY = 38;
+
+        doc.setFillColor(...PRIMARY);
+        doc.rect(0, 0, pageWidth, 4, "F");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(...TEXT_DARK);
+        doc.text("Transaction History Report (Continued)", 14, 20);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.text(`Period: ${fmtShortDate(start)} to ${fmtShortDate(end)}`, 14, 25);
+
+        doc.setFillColor(...PRIMARY);
+        doc.rect(14, 30, pageWidth - 28, 8, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(255, 255, 255);
+        doc.text("Date", 16, 35.5);
+        doc.text("Member Details", 42, 35.5);
+        doc.text("Plan", 95, 35.5);
+        doc.text("Method", 125, 35.5);
+        doc.text("Paid", 152, 35.5);
+        doc.text("Due", 178, 35.5);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+
+        pages[pIdx].forEach((p, idx) => {
+          if (idx % 2 === 1) {
+            doc.setFillColor(243, 244, 246);
+            doc.rect(14, currentY, pageWidth - 28, 8, "F");
+          }
+          
+          doc.setTextColor(...TEXT_DARK);
+          const pDateStr = fmt(p.renewalDate || p.createdAt?.toDate?.() || p.createdAt);
+          doc.text(pDateStr, 16, currentY + 5.5);
+          
+          const truncatedName = p.memberName?.length > 22 ? p.memberName.slice(0, 20) + ".." : p.memberName;
+          doc.text(`${truncatedName} (${p.memberContact})`, 42, currentY + 5.5);
+          
+          doc.text(p.planType || "—", 95, currentY + 5.5);
+          doc.text(p.paymentMethod || "—", 125, currentY + 5.5);
+          
+          doc.setTextColor(...GREEN);
+          doc.text(`INR ${p.amountPaid?.toLocaleString("en-IN") || 0}`, 152, currentY + 5.5);
+          
+          doc.setTextColor(...((p.dueAmount || 0) > 0 ? RED : TEXT_MUTED));
+          doc.text(`INR ${p.dueAmount?.toLocaleString("en-IN") || 0}`, 178, currentY + 5.5);
+          
+          currentY += 8;
+        });
+
+        drawChrome(pIdx + 1, totalPages);
+      }
+
+      const filename = `${gymName.replace(/\s+/g, "_")}_Transactions_${fmtShortDate(start)}_to_${fmtShortDate(end)}.pdf`;
+      doc.save(filename);
+      setShowDownloadModal(false);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      alert("Failed to export PDF: " + err.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   useEffect(() => {
     if (!currentAdminGymId) return;
@@ -260,7 +579,7 @@ export default function PaymentsPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <div className="payments-selects">
+            <div className="payments-selects" style={{ alignItems: "center" }}>
               <select
                 className="payments-select"
                 value={methodFilter}
@@ -281,6 +600,28 @@ export default function PaymentsPage() {
                 <option value="Fully Paid">Fully Paid</option>
                 <option value="Has Dues">Has Dues</option>
               </select>
+              <button
+                className="btn btn-primary"
+                style={{
+                  padding: "8px 16px",
+                  fontSize: "0.85rem",
+                  borderRadius: "var(--radius-sm)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  whiteSpace: "nowrap",
+                  marginTop: 0,
+                  height: "38px"
+                }}
+                onClick={() => setShowDownloadModal(true)}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Export PDF
+              </button>
             </div>
           </div>
 
@@ -367,6 +708,26 @@ export default function PaymentsPage() {
           payment={collectingPayment}
           onClose={() => setCollectingPayment(null)}
           onSaved={() => setCollectingPayment(null)}
+        />
+      )}
+
+      {/* Download PDF Modal */}
+      {showDownloadModal && (
+        <DownloadModal
+          onClose={() => setShowDownloadModal(false)}
+          onDownload={handleDownloadPDF}
+          preset={downloadPreset}
+          setPreset={setDownloadPreset}
+          customStart={customStart}
+          setCustomStart={setCustomStart}
+          customEnd={customEnd}
+          setCustomEnd={setCustomEnd}
+          applyFilters={applyFilters}
+          setApplyFilters={setApplyFilters}
+          generating={generating}
+          search={search}
+          methodFilter={methodFilter}
+          statusFilter={statusFilter}
         />
       )}
     </Layout>
@@ -466,6 +827,221 @@ function CollectDueModal({ payment, onClose, onSaved }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Download Modal Component ───────────────────────────────────────────────
+
+function DownloadModal({
+  onClose,
+  onDownload,
+  preset,
+  setPreset,
+  customStart,
+  setCustomStart,
+  customEnd,
+  setCustomEnd,
+  applyFilters,
+  setApplyFilters,
+  generating,
+  search,
+  methodFilter,
+  statusFilter,
+}) {
+  // We can calculate resolved dates for display
+  const getDisplayRange = () => {
+    const today = new Date();
+    let start, end;
+    if (preset === "this_month") {
+      start = new Date(today.getFullYear(), today.getMonth(), 1);
+      end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    } else if (preset === "last_month") {
+      start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      end = new Date(today.getFullYear(), today.getMonth(), 0);
+    } else if (preset === "last_3_months") {
+      start = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+      end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    } else {
+      start = customStart ? new Date(customStart) : null;
+      end = customEnd ? new Date(customEnd) : null;
+    }
+    return { start, end };
+  };
+
+  const { start, end } = getDisplayRange();
+
+  const formatDateValue = (d) => {
+    if (!d) return "";
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  return (
+    <div className="modal-overlay" role="dialog" aria-modal="true" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-content" style={{ maxWidth: "450px" }}>
+        <div className="modal-header">
+          <h2 className="modal-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ color: "var(--cyan)" }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Export Transactions PDF
+          </h2>
+          <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+
+        <div className="modal-form">
+          {/* Preset Pills */}
+          <div className="form-group" style={{ marginBottom: "16px" }}>
+            <label>Select Date Range Preset</label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", marginTop: "6px" }}>
+              <button
+                type="button"
+                className={`btn ${preset === "this_month" ? "btn-primary" : "btn-ghost"}`}
+                style={{
+                  padding: "8px",
+                  fontSize: "0.85rem",
+                  borderRadius: "8px",
+                  border: preset === "this_month" ? "none" : "1px solid var(--border)",
+                  background: preset === "this_month" ? "" : "transparent",
+                  color: preset === "this_month" ? "#fff" : "var(--text-primary)"
+                }}
+                onClick={() => setPreset("this_month")}
+              >
+                This Month
+              </button>
+              <button
+                type="button"
+                className={`btn ${preset === "last_month" ? "btn-primary" : "btn-ghost"}`}
+                style={{
+                  padding: "8px",
+                  fontSize: "0.85rem",
+                  borderRadius: "8px",
+                  border: preset === "last_month" ? "none" : "1px solid var(--border)",
+                  background: preset === "last_month" ? "" : "transparent",
+                  color: preset === "last_month" ? "#fff" : "var(--text-primary)"
+                }}
+                onClick={() => setPreset("last_month")}
+              >
+                Last Month
+              </button>
+              <button
+                type="button"
+                className={`btn ${preset === "last_3_months" ? "btn-primary" : "btn-ghost"}`}
+                style={{
+                  padding: "8px",
+                  fontSize: "0.85rem",
+                  borderRadius: "8px",
+                  border: preset === "last_3_months" ? "none" : "1px solid var(--border)",
+                  background: preset === "last_3_months" ? "" : "transparent",
+                  color: preset === "last_3_months" ? "#fff" : "var(--text-primary)"
+                }}
+                onClick={() => setPreset("last_3_months")}
+              >
+                Last 3 Months
+              </button>
+              <button
+                type="button"
+                className={`btn ${preset === "custom" ? "btn-primary" : "btn-ghost"}`}
+                style={{
+                  padding: "8px",
+                  fontSize: "0.85rem",
+                  borderRadius: "8px",
+                  border: preset === "custom" ? "none" : "1px solid var(--border)",
+                  background: preset === "custom" ? "" : "transparent",
+                  color: preset === "custom" ? "#fff" : "var(--text-primary)"
+                }}
+                onClick={() => setPreset("custom")}
+              >
+                Custom Range
+              </button>
+            </div>
+          </div>
+
+          {/* Date Picker Inputs */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label htmlFor="custom-start-date">Start Date</label>
+              <input
+                id="custom-start-date"
+                type="date"
+                disabled={preset !== "custom"}
+                value={preset === "custom" ? customStart : formatDateValue(start)}
+                onChange={(e) => setCustomStart(e.target.value)}
+                style={{
+                  opacity: preset === "custom" ? 1 : 0.6,
+                  cursor: preset === "custom" ? "text" : "not-allowed",
+                  width: "100%"
+                }}
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label htmlFor="custom-end-date">End Date</label>
+              <input
+                id="custom-end-date"
+                type="date"
+                disabled={preset !== "custom"}
+                value={preset === "custom" ? customEnd : formatDateValue(end)}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                style={{
+                  opacity: preset === "custom" ? 1 : 0.6,
+                  cursor: preset === "custom" ? "text" : "not-allowed",
+                  width: "100%"
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Checkbox for Filters */}
+          <div className="form-group" style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "12px", background: "var(--bg-surface)", borderRadius: "8px", border: "1px solid var(--border)", marginBottom: "20px" }}>
+            <input
+              id="apply-filters-checkbox"
+              type="checkbox"
+              checked={applyFilters}
+              onChange={(e) => setApplyFilters(e.target.checked)}
+              style={{ marginTop: "3px", width: "16px", height: "16px", cursor: "pointer" }}
+            />
+            <label htmlFor="apply-filters-checkbox" style={{ fontSize: "0.85rem", cursor: "pointer", userSelect: "none", color: "var(--text-secondary)" }}>
+              <strong style={{ color: "var(--text-primary)" }}>Apply active table filters</strong>
+              <div style={{ marginTop: "4px", fontSize: "0.8rem", opacity: 0.85 }}>
+                Respects search query, method, and payment status currently set in the table.
+                {applyFilters && (
+                  <div style={{ marginTop: "4px", color: "var(--cyan)", fontWeight: 600 }}>
+                    Active filters: {search ? `Search "${search}"` : "None"} • Method: {methodFilter} • Status: {statusFilter}
+                  </div>
+                )}
+              </div>
+            </label>
+          </div>
+
+          {/* Actions */}
+          <div className="modal-actions" style={{ marginTop: "20px" }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose} style={{ flex: 1, border: "1px solid var(--border)" }} disabled={generating}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ flex: 2 }}
+              onClick={onDownload}
+              disabled={generating || (preset === "custom" && (!customStart || !customEnd))}
+            >
+              {generating ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                  <div className="spinner" style={{ width: "14px", height: "14px", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff" }} />
+                  Generating...
+                </div>
+              ) : (
+                "Download PDF"
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
